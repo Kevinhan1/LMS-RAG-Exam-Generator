@@ -7,6 +7,7 @@ import (
 	"backendLMS/middlewares"
 
 	"github.com/gorilla/mux"
+	"github.com/rs/cors"
 )
 
 func New() http.Handler {
@@ -39,6 +40,29 @@ func New() http.Handler {
 	admin := api.PathPrefix("/admin").Subrouter()
 	admin.Use(middlewares.RequireRoles(1)) // ADMIN ONLY
 
+	// ---- Question Management (ADMIN FULL CRUD)
+	admin.HandleFunc("/questions", handlers.GetQuestions).Methods("GET")
+	admin.HandleFunc("/questions/{id}", handlers.GetQuestionDetail).Methods("GET")
+	admin.HandleFunc("/questions/{id}", handlers.UpdateQuestion).Methods("PUT")
+	admin.HandleFunc("/questions/{id}", handlers.DeleteQuestion).Methods("DELETE")
+	admin.HandleFunc("/questions/{id}/status", handlers.UpdateQuestionStatus).Methods("PATCH")
+
+	// ---- Answer Management (ADMIN)
+	admin.HandleFunc(
+		"/questions/{id}/answers",
+		handlers.CreateAnswer,
+	).Methods("POST")
+
+	admin.HandleFunc(
+		"/answers/{id}",
+		handlers.UpdateAnswer,
+	).Methods("PUT")
+
+	admin.HandleFunc(
+		"/answers/{id}",
+		handlers.DeleteAnswer,
+	).Methods("DELETE")
+
 	// ---- Role Management
 	admin.HandleFunc("/roles", handlers.GetRoles).Methods("GET")
 	admin.HandleFunc("/roles", handlers.CreateRole).Methods("POST")
@@ -59,6 +83,77 @@ func New() http.Handler {
 	admin.HandleFunc("/courses", handlers.CreateCourse).Methods("POST")
 	admin.HandleFunc("/courses/{id}", handlers.UpdateCourse).Methods("PUT")
 	admin.HandleFunc("/courses/{id}", handlers.DeleteCourse).Methods("DELETE")
+
+	// ---- Permission Management
+
+	// READ (AUTH USER)
+	api.HandleFunc("/permissions", handlers.GetPermissions).Methods("GET")
+	api.HandleFunc("/permissions/{id}", handlers.GetPermissionByID).Methods("GET")
+
+	// WRITE (ADMIN)
+	admin.HandleFunc("/permissions", handlers.CreatePermission).Methods("POST")
+	admin.HandleFunc("/permissions/{id}", handlers.UpdatePermission).Methods("PUT")
+	admin.HandleFunc("/permissions/{id}", handlers.DeletePermission).Methods("DELETE")
+
+	// ---- Role Permission Management
+	admin.HandleFunc(
+		"/roles/{id}/permissions",
+		handlers.AssignPermission,
+	).Methods("POST")
+
+	admin.HandleFunc(
+		"/roles/{id}/permissions",
+		handlers.GetRolePermissions,
+	).Methods("GET")
+
+	admin.HandleFunc(
+		"/roles/{id}/permissions/{permission_id}",
+		handlers.RemovePermission,
+	).Methods("DELETE")
+
+	// ======================
+	// TEACHER ONLY
+	// ======================
+	teacher := api.PathPrefix("/teacher").Subrouter()
+	teacher.Use(middlewares.RequireRoles(2)) // ROLE_TEACHER
+
+	// ---- Material (TEACHER - OWN ONLY)
+	teacher.HandleFunc(
+		"/materials/{id}",
+		handlers.TeacherUpdateMaterial,
+	).Methods("PUT")
+
+	teacher.HandleFunc(
+		"/materials/{id}",
+		handlers.TeacherDeleteMaterial,
+	).Methods("DELETE")
+
+	teacher.HandleFunc(
+		"/materials",
+		handlers.CreateMaterial,
+	).Methods("POST")
+
+	teacher.HandleFunc("/questions", handlers.GetQuestions).Methods("GET")
+	teacher.HandleFunc("/questions/{id}", handlers.GetQuestionDetail).Methods("GET")
+	teacher.HandleFunc("/questions/{id}", handlers.UpdateQuestion).Methods("PUT")
+	teacher.HandleFunc("/questions/{id}", handlers.DeleteQuestion).Methods("DELETE")
+	teacher.HandleFunc("/questions/{id}/status", handlers.UpdateQuestionStatus).Methods("PATCH")
+
+	// ---- Answer Management (TEACHER)
+	teacher.HandleFunc(
+		"/questions/{id}/answers",
+		handlers.CreateAnswer,
+	).Methods("POST")
+
+	teacher.HandleFunc(
+		"/answers/{id}",
+		handlers.UpdateAnswer,
+	).Methods("PUT")
+
+	teacher.HandleFunc(
+		"/answers/{id}",
+		handlers.DeleteAnswer,
+	).Methods("DELETE")
 
 	// ======================
 	// PUBLIC / AUTH USERS
@@ -88,14 +183,18 @@ func New() http.Handler {
 	api.HandleFunc("/tags/{id}", handlers.GetTagByID).Methods("GET")
 
 	// ---- Material
-	admin.HandleFunc("/materials", handlers.CreateMaterial).Methods("POST")
+	// ---- Material (ADMIN)
 	admin.HandleFunc("/materials/{id}", handlers.UpdateMaterial).Methods("PUT")
 	admin.HandleFunc("/materials/{id}", handlers.DeleteMaterial).Methods("DELETE")
 	api.HandleFunc("/materials", handlers.GetMaterials).Methods("GET")
 	api.HandleFunc("/materials/{id}", handlers.GetMaterialByID).Methods("GET")
+	admin.HandleFunc(
+		"/materials",
+		handlers.CreateMaterial,
+	).Methods("POST")
 
 	// ======================
-	// ENROLLMENT (AUTH FIXED)
+	// ENROLLMENT (AUTH FIXED
 	// ======================
 
 	// STUDENT ONLY
@@ -132,5 +231,33 @@ func New() http.Handler {
 		),
 	).Methods("GET")
 
-	return r
+	// ---- Material Tags
+	admin.HandleFunc(
+		"/materials/{id}/tags",
+		handlers.AttachTagToMaterial,
+	).Methods("POST")
+
+	admin.HandleFunc(
+		"/materials/{id}/tags/{tag_id}",
+		handlers.DetachMaterialTag,
+	).Methods("DELETE")
+
+	api.HandleFunc(
+		"/materials/{id}/tags",
+		handlers.GetMaterialTags,
+	).Methods("GET")
+
+	teacher.HandleFunc(
+		"/questions/rag_generate",
+		handlers.GenerateQuestionFromRAG,
+	).Methods("POST")
+
+	// Setup CORS
+	c := cors.New(cors.Options{
+		AllowedOrigins: []string{"*"}, // Change this to specific domain in production
+		AllowedMethods: []string{"GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"},
+		AllowedHeaders: []string{"Authorization", "Content-Type"},
+	})
+
+	return c.Handler(r)
 }
